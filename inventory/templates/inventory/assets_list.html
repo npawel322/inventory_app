@@ -1,0 +1,14 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center">
+  <h3>Assets</h3>
+  <a class="btn btn-primary" href="{% url 'asset_create' %}">+ Add</a>
+</div>
+
+<table class="table table-striped mt-3">
+  <tr><th>Name</th><th>Serial</th><th>Status</th></tr>
+  {% for a in assets %}
+    <tr><td>{{ a.name }}</td><td>{{ a.serial_number }}</td><td>{{ a.status }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

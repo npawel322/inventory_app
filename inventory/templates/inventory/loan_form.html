@@ -1,0 +1,51 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+<h3>New loan</h3>
+
+<form method="post" class="mt-3">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  <div class="mb-3">
+    <label class="form-label">Asset</label>
+    {{ form.asset }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Target type</label>
+    {{ form.target_type }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Person</label>
+    {{ form.person }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Desk</label>
+    {{ form.desk }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Office</label>
+    {{ form.office }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Department</label>
+    {{ form.department }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Due date</label>
+    {{ form.due_date }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Issued by</label>
+    {{ form.issued_by }}
+  </div>
+
+  <button class="btn btn-success">Create</button>
+</form>
+{% endblock %}
