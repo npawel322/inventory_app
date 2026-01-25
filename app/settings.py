@@ -56,6 +56,8 @@ ROOT_URLCONF = 'app.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        # App templates live under inventory/templates (APP_DIRS=True).
+        # If you later want global templates, add BASE_DIR / "templates" here.
         'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
@@ -117,6 +119,24 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Auth
+LOGIN_URL = "login"
+LOGOUT_REDIRECT_URL = "login"
+LOGIN_REDIRECT_URL = "assets_list"
+
+
+
+# DRF – keep it simple: session auth + require login.
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.BasicAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

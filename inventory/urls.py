@@ -1,8 +1,13 @@
 from django.urls import path
+from django.contrib.auth import views as auth_views
 from . import views
 
 urlpatterns = [
-    path("", views.assets_list, name="assets_list"),
+    # Auth
+    path("login/", views.RoleBasedLoginView.as_view(), name="login"),
+    path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+
+    path("", views.home, name="home"),
 
     path("assets/", views.assets_list, name="assets_list"),
     path("assets/new/", views.asset_create, name="asset_create"),

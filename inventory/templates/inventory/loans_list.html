@@ -1,12 +1,12 @@
 {% extends "inventory/base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center">
-  <h3>Active loans</h3>
+  <h3>{% if is_admin %}Active loans{% else %}My active loans{% endif %}</h3>
   <a class="btn btn-primary" href="{% url 'loan_create' %}">+ New loan</a>
 </div>
 
 <table class="table table-striped mt-3">
-  <tr><th>Asset</th><th>Target</th><th>Loan date</th><th>Due</th><th></th></tr>
+  <tr><th>Asset</th><th>Target</th><th>Issue date</th><th>Due</th><th></th></tr>
   {% for l in loans %}
     <tr class="{% if l.due_date and l.due_date < today %}table-danger{% endif %}">
       <td>{{ l.asset }}</td>
@@ -14,12 +14,16 @@
       <td>{{ l.loan_date }}</td>
       <td>{{ l.due_date|default:"-" }}</td>
       <td>
-        <form method="post" action="{% url 'loan_return' l.id %}">
-          {% csrf_token %}
-          <button class="btn btn-sm btn-success">Return</button>
-        </form>
+  {% if is_admin or l.created_by_id == request.user.id or l.person and l.person.user_id == request.user.id %}
+          <form method="post" action="{% url 'loan_return' l.id %}">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-success">Return</button>
+          </form>
+        {% endif %}
       </td>
     </tr>
+  {% empty %}
+    <tr><td colspan="5" class="text-muted">No active loans.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

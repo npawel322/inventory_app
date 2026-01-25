@@ -7,12 +7,36 @@
 </head>
 <body class="container py-4">
 
+{% if request.user.is_authenticated %}
 <nav class="mb-4">
-  <a class="btn btn-outline-dark btn-sm" href="{% url 'assets_list' %}">Assets</a>
-  <a class="btn btn-outline-dark btn-sm" href="{% url 'persons_list' %}">Persons</a>
+
+  {% if request.user.is_staff %}
+    <a class="btn btn-outline-dark btn-sm" href="{% url 'assets_list' %}">Assets</a>
+    <a class="btn btn-outline-dark btn-sm" href="{% url 'persons_list' %}">Employees</a>
+  {% endif %}
+
   <a class="btn btn-outline-dark btn-sm" href="{% url 'loans_list' %}">Loans</a>
-  <a class="btn btn-outline-dark btn-sm" href="{% url 'history' %}">History</a>
+
+  {% if request.user.is_staff %}
+    <a class="btn btn-outline-dark btn-sm" href="{% url 'history' %}">History</a>
+  {% else %}
+    <a class="btn btn-outline-dark btn-sm" href="{% url 'history' %}">My history</a>
+  {% endif %}
+
+  <span class="ms-3">
+      <span class="me-2">Logged in as <b>{{ request.user.username }}</b></span>
+
+      {% if request.user.is_staff %}
+        <a class="btn btn-outline-primary btn-sm" href="/admin/">Admin</a>
+      {% endif %}
+
+      <form method="post" action="{% url 'logout' %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
+      </form>
+  </span>
 </nav>
+{% endif %}
 
 {% if messages %}
   {% for message in messages %}
