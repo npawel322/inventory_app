@@ -15,7 +15,6 @@ ROLE_CHOICES = (
 
 
 def _get_role_from_user(user: User) -> str:
-    # Admin access is defined by staff/superuser
     if user.is_superuser or user.is_staff:
         return ROLE_ADMIN
 
@@ -28,27 +27,20 @@ def _get_role_from_user(user: User) -> str:
 
 
 def _apply_role(user: User, role: str):
-    """
-    Apply role safely AFTER user is saved (must have PK).
-    Keeps exactly one role group + enforces staff/superuser flags.
-    """
     role = role or ROLE_EMPLOYEE
 
-    # Ensure role groups exist
     for n in ROLE_NAMES:
         Group.objects.get_or_create(name=n)
 
-    # Remove only our role groups, keep other groups intact
     role_groups = Group.objects.filter(name__in=list(ROLE_NAMES))
     user.groups.remove(*role_groups)
 
     group, _ = Group.objects.get_or_create(name=role)
     user.groups.add(group)
 
-    # Enforce admin access strictly via staff/superuser
     if role == ROLE_ADMIN:
         user.is_staff = True
-        user.is_superuser = True  # jeśli NIE chcesz rozdawać superuserów, zmień na False
+        user.is_superuser = False  # admin is not a superuser
     else:
         user.is_staff = False
         user.is_superuser = False
@@ -57,7 +49,6 @@ def _apply_role(user: User, role: str):
 
 
 class UserRoleChangeForm(forms.ModelForm):
-    """Expose a single 'role' field instead of raw groups."""
     role = forms.ChoiceField(choices=ROLE_CHOICES, required=True)
 
     class Meta:
@@ -73,7 +64,6 @@ class UserRoleChangeForm(forms.ModelForm):
 
 
 class UserRoleAddForm(forms.ModelForm):
-    """User creation form that also sets the role."""
     role = forms.ChoiceField(choices=ROLE_CHOICES, required=True)
     password1 = forms.CharField(label="Password", widget=forms.PasswordInput)
     password2 = forms.CharField(label="Password confirmation", widget=forms.PasswordInput)
@@ -91,11 +81,6 @@ class UserRoleAddForm(forms.ModelForm):
         return cleaned
 
     def save(self, commit=True):
-        """
-        IMPORTANT: do NOT touch M2M (groups) here.
-        Django admin calls save(commit=False) first -> user has no PK yet.
-        Role will be applied in UserAdmin.save_model after saving.
-        """
         user: User = super().save(commit=False)
         user.set_password(self.cleaned_data["password1"])
         if commit:
@@ -111,7 +96,6 @@ except admin.sites.NotRegistered:
 
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
-    """User admin with a single 'role' selector."""
     form = UserRoleChangeForm
     add_form = UserRoleAddForm
 
@@ -133,12 +117,40 @@ class UserAdmin(DjangoUserAdmin):
     )
 
     def save_model(self, request, obj, form, change):
-        # 1) Save user first (must have PK)
         super().save_model(request, obj, form, change)
 
-        # 2) Now it's safe to apply M2M groups + flags
         role = form.cleaned_data.get("role") or ROLE_EMPLOYEE
         _apply_role(obj, role)
+
+        if role == ROLE_EMPLOYEE:
+            person = None
+
+            if obj.email:
+                person = Person.objects.filter(email=obj.email).first()
+
+            if person:
+                if person.user_id != obj.id:
+                    person.user = obj
+
+                if not person.first_name:
+                    person.first_name = obj.first_name or ""
+                if not person.last_name:
+                    person.last_name = obj.last_name or ""
+                if not person.email:
+                    person.email = obj.email or ""
+
+                person.save()
+
+            else:
+                Person.objects.get_or_create(
+                    user=obj,
+                    defaults={
+                        "first_name": obj.first_name or "",
+                        "last_name": obj.last_name or "",
+                        "email": obj.email or "",
+                        "department": "",
+                    }
+                )
 
 
 admin.site.register(Office)
