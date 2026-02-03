@@ -3,7 +3,7 @@ from django import forms
 from django.contrib.auth.models import User, Group
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import Office, Room, Desk, AssetCategory, Asset, Person, Loan
+from .models import Office, Department, DepartmentPosition, Room, Desk, AssetCategory, Asset, Person, Loan
 from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_COMPANY, ROLE_NAMES
 
 
@@ -154,6 +154,8 @@ class UserAdmin(DjangoUserAdmin):
 
 
 admin.site.register(Office)
+admin.site.register(Department)
+admin.site.register(DepartmentPosition)
 admin.site.register(Room)
 admin.site.register(Desk)
 admin.site.register(AssetCategory)

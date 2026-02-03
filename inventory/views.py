@@ -88,7 +88,7 @@ def _resolve_person_for_user(user):
 def loans_list(request):
     role = get_user_role(request.user)
     base_qs = Loan.objects.select_related(
-        "asset", "person", "desk__room__office", "office", "created_by"
+        "asset", "person", "desk__room__office", "office", "department_position__department__office", "created_by"
     ).filter(return_date__isnull=True).order_by("-id")
 
     person = _resolve_person_for_user(request.user)
@@ -198,7 +198,7 @@ def loan_return(request, loan_id: int):
 def history(request):
     role = get_user_role(request.user)
     base_qs = Loan.objects.select_related(
-        "asset", "person", "desk__room__office", "office", "created_by"
+        "asset", "person", "desk__room__office", "office", "department_position__department__office", "created_by"
     ).order_by("-id")
 
     person = _resolve_person_for_user(request.user)
