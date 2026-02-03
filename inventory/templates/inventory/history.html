@@ -1,8 +1,8 @@
 {% extends "inventory/base.html" %}
 {% block content %}
-<h3>History</h3>
+<h3>{% if is_admin %}History{% else %}My history{% endif %}</h3>
 <table class="table table-striped mt-3">
-  <tr><th>Asset</th><th>Target</th><th>Loan</th><th>Due</th><th>Return</th></tr>
+  <tr><th>Asset</th><th>Target</th><th>Issue</th><th>Due</th><th>Return</th></tr>
   {% for l in loans %}
     <tr class="{% if l.return_date is None and l.due_date and l.due_date < today %}table-danger{% endif %}">
       <td>{{ l.asset }}</td>
@@ -11,6 +11,8 @@
       <td>{{ l.due_date|default:"-" }}</td>
       <td>{{ l.return_date|default:"-" }}</td>
     </tr>
+  {% empty %}
+    <tr><td colspan="5" class="text-muted">No history.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

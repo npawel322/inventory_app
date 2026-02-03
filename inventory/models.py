@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.utils import timezone
 
 
@@ -64,6 +65,13 @@ class Person(models.Model):
     last_name = models.CharField(max_length=120)
     department = models.CharField(max_length=120, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="person_profile",
+    )
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
@@ -71,6 +79,14 @@ class Person(models.Model):
 
 class Loan(models.Model):
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name="loans")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="created_loans",
+    )
+
 
     # target: exactly one of the following
     person = models.ForeignKey(Person, on_delete=models.PROTECT, blank=True, null=True, related_name="loans")
