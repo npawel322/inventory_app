@@ -1,6 +1,8 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from inventory.models import (
+    Department,
+    DepartmentPosition,
     Office, Room, Desk,
     AssetCategory, Asset,
     Person, Loan
@@ -24,6 +26,8 @@ class Command(BaseCommand):
         Desk.objects.all().delete()
         Room.objects.all().delete()
         Office.objects.all().delete()
+        DepartmentPosition.objects.all().delete()
+        Department.objects.all().delete()
         Asset.objects.all().delete()
         AssetCategory.objects.all().delete()
         Person.objects.all().delete()
@@ -49,6 +53,30 @@ class Command(BaseCommand):
                         type=random.choice(["open_space", "meeting", "private"])
                     )
                 )
+
+        # ---------- DEPARTMENTS ----------
+        dept_defs = [
+            ("Yellow", "yellow"),
+            ("Blue", "blue"),
+            ("Green", "green"),
+            ("Purple", "purple"),
+            ("Orange", "orange"),
+        ]
+        positions = []
+        for office in offices:
+            for dep_name, dep_color in dept_defs:
+                dep = Department.objects.create(
+                    office=office,
+                    name=dep_name,
+                    color=dep_color,
+                )
+                for idx in range(1, 11):
+                    positions.append(
+                        DepartmentPosition.objects.create(
+                            department=dep,
+                            number=idx,
+                        )
+                    )
 
         # ---------- DESKS ----------
         desks = []
@@ -154,7 +182,9 @@ class Command(BaseCommand):
             elif target_type == "office":
                 loan.office = random.choice(offices)
             else:
-                loan.department = random.choice(departments)
+                position = random.choice(positions)
+                loan.department_position = position
+                loan.department = str(position)
 
             loan.save()
 

@@ -38,4 +38,62 @@
 
   <button class="btn btn-success">Create</button>
 </form>
+
+<script>
+  (function () {
+    const officeField = document.getElementById("id_office");
+    const deskField = document.getElementById("id_desk");
+    const departmentField = document.getElementById("id_department_position");
+
+    if (!officeField) {
+      return;
+    }
+
+    function setupFilteredSelect(selectField) {
+      if (!selectField) {
+        return () => {};
+      }
+
+      const allOptions = Array.from(selectField.options).map((option) => ({
+        value: option.value,
+        label: option.text,
+        officeId: option.dataset.officeId || "",
+      }));
+      const placeholderLabel = allOptions.find((option) => !option.value)?.label || "---------";
+
+      return function renderOptions() {
+        const selectedOfficeId = officeField.value;
+        const currentValue = selectField.value;
+
+        selectField.innerHTML = "";
+        selectField.appendChild(new Option(placeholderLabel, ""));
+
+        allOptions.forEach((option) => {
+          if (!option.value) {
+            return;
+          }
+          if (selectedOfficeId && option.officeId !== selectedOfficeId) {
+            return;
+          }
+          selectField.appendChild(new Option(option.label, option.value));
+        });
+
+        const hasCurrentValue = Array.from(selectField.options).some((option) => option.value === currentValue);
+        selectField.value = hasCurrentValue ? currentValue : "";
+        selectField.disabled = !selectedOfficeId;
+      };
+    }
+
+    const renderDeskOptions = setupFilteredSelect(deskField);
+    const renderDepartmentOptions = setupFilteredSelect(departmentField);
+
+    function renderAll() {
+      renderDeskOptions();
+      renderDepartmentOptions();
+    }
+
+    officeField.addEventListener("change", renderAll);
+    renderAll();
+  })();
+</script>
 {% endblock %}
