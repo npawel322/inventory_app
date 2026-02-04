@@ -9,6 +9,9 @@ from django.contrib.auth import views as auth_views
 from .models import Asset, Person, Loan
 from .forms import AssetForm, PersonForm, AdminLoanForm, CompanyLoanForm, EmployeeLoanForm
 from .roles import get_user_role, role_required, ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_COMPANY
+from .filters import AssetFilter
+from .filters import PersonFilter
+
 
 
 class RoleBasedLoginView(auth_views.LoginView):
@@ -33,7 +36,8 @@ def home(request):
 @role_required(ROLE_ADMIN)
 def assets_list(request):
     assets = Asset.objects.select_related("category").order_by("-id")
-    return render(request, "inventory/assets_list.html", {"assets": assets})
+    f = AssetFilter(request.GET, queryset=assets)
+    return render(request, "inventory/assets_list.html", {"assets": f.qs, "filter": f})
 
 
 @login_required
@@ -46,14 +50,15 @@ def asset_create(request):
             return redirect("assets_list")
     else:
         form = AssetForm()
-    return render(request, "inventory/form.html", {"title": "Add asset", "form": form})
+    return render(request, "inventory/form.html", {"title": "Add asset", "form": form, "cancel_url": "assets_list"})
 
 
 @login_required
 @role_required(ROLE_ADMIN)
 def persons_list(request):
     persons = Person.objects.order_by("last_name", "first_name")
-    return render(request, "inventory/persons_list.html", {"persons": persons})
+    f = PersonFilter(request.GET, queryset=persons)
+    return render(request, "inventory/persons_list.html", {"persons": f.qs, "filter": f})
 
 
 @login_required
@@ -110,6 +115,7 @@ def loans_list(request):
             "today": timezone.now().date(),
             "is_admin": is_admin,
             "role": role,
+            'cancel_url': 'loans_list',
         },
     )
 

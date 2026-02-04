@@ -36,7 +36,17 @@
     </div>
   {% endfor %}
 
-  <button class="btn btn-success">Create</button>
+  <div class="d-flex gap-2">
+    <button class="btn btn-success">Create</button>
+
+    {% if cancel_url %}
+      <a href="{% url cancel_url %}" class="btn btn-secondary">Cancel</a>
+    {% else %}
+      <a href="{% url 'loans_list' %}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
+  </div>
+
+  
 </form>
 
 <script>

@@ -22,6 +22,18 @@ class AssetForm(forms.ModelForm):
         model = Asset
         fields = ["category", "name", "serial_number", "asset_tag", "status", "purchase_date", "notes"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        _bootstrapify(self)
+
+        # date picker
+        if "purchase_date" in self.fields:
+            self.fields["purchase_date"].widget = forms.DateInput(
+                attrs={"type": "date", "class": "form-control"}
+            )
+
+
 
 class PersonForm(forms.ModelForm):
     class Meta:
@@ -181,10 +193,17 @@ def _validate_loan_dates(cleaned: dict) -> None:
 
 
 def _assign_legacy_department_label(loan: Loan) -> None:
+    # 1) jeśli wypożyczenie jest na osobę i osoba ma department -> to wygrywa
+    if loan.person and loan.person.department:
+        loan.department = loan.person.department
+        return
+
+    # 2) w pozostałych przypadkach (desk/department) bierz z department_position
     if loan.department_position:
         loan.department = str(loan.department_position)
     elif not loan.department:
         loan.department = None
+
 
 
 def _is_department_position_available(position: DepartmentPosition) -> bool:
@@ -270,6 +289,9 @@ class AdminLoanForm(forms.ModelForm):
             if not person:
                 raise ValidationError("Select a person.")
             cleaned["person"] = person
+
+            
+            cleaned["department"] = (person.department or "").strip() or None
 
         elif target_type == "desk":
             if not desk:
