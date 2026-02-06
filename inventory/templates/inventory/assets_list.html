@@ -5,10 +5,49 @@
   <a class="btn btn-primary" href="{% url 'asset_create' %}">+ Add</a>
 </div>
 
+<form method="get" class="mt-3">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Name</label>
+      {{ filter.form.name }}
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Serial</label>
+      {{ filter.form.serial_number }}
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Status</label>
+      {{ filter.form.status }}
+      
+    </div>
+
+    <div class="col-md-1 d-grid">
+      <button type="submit" class="btn btn-secondary">Filter</button>
+    </div>
+  </div>
+
+  <div class="mt-2">
+    <a href="{% url 'assets_list' %}" class="btn btn-link p-0">Clear</a>
+  </div>
+</form>
+
+
 <table class="table table-striped mt-3">
-  <tr><th>Name</th><th>Serial</th><th>Status</th></tr>
-  {% for a in assets %}
-    <tr><td>{{ a.name }}</td><td>{{ a.serial_number }}</td><td>{{ a.status }}</td></tr>
-  {% endfor %}
+  <thead>
+    <tr><th>Name</th><th>Serial</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    {% for a in assets %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td>{{ a.serial_number }}</td>
+        <td>{{ a.get_status_display }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3">No results</td></tr>
+    {% endfor %}
+  </tbody>
 </table>
 {% endblock %}
