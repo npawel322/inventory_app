@@ -12,26 +12,13 @@ class Office(models.Model):
 
 
 class Department(models.Model):
-    COLOR_CHOICES = [
-        ("yellow", "Yellow"),
-        ("blue", "Blue"),
-        ("green", "Green"),
-        ("purple", "Purple"),
-        ("orange", "Orange"),
-    ]
-
-    office = models.ForeignKey(Office, on_delete=models.CASCADE, related_name="departments")
-    name = models.CharField(max_length=120)
-    color = models.CharField(max_length=20, choices=COLOR_CHOICES)
+    name = models.CharField(max_length=120, unique=True)
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["office", "name"], name="uniq_department_office_name")
-        ]
-        ordering = ["office__name", "name"]
+        ordering = ["name"]
 
     def __str__(self):
-        return f"{self.office.name} / {self.name}"
+        return self.name
 
 
 class DepartmentPosition(models.Model):
@@ -42,7 +29,7 @@ class DepartmentPosition(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["department", "number"], name="uniq_department_position")
         ]
-        ordering = ["department__office__name", "department__name", "number"]
+        ordering = ["department__name", "number"]
 
     def __str__(self):
         return f"{self.department.name} #{self.number}"
@@ -156,8 +143,6 @@ class Loan(models.Model):
             return str(self.office)
         if self.desk:
             return str(self.desk.room.office)
-        if self.department_position:
-            return str(self.department_position.department.office)
         return "-"
 
     @property
@@ -168,8 +153,6 @@ class Loan(models.Model):
 
     @property
     def department_label(self) -> str:
-        if self.department_position:
-            return str(self.department_position)
         if self.department:
             return self.department
         return "-"
@@ -181,8 +164,6 @@ class Loan(models.Model):
             return f"Desk: {self.desk}"
         if self.office:
             return f"Office: {self.office}"
-        if self.department_position:
-            return f"Department: {self.department_position}"
         if self.department:
             return f"Department: {self.department}"
         return "-"

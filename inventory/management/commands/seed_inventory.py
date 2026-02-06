@@ -56,27 +56,21 @@ class Command(BaseCommand):
 
         # ---------- DEPARTMENTS ----------
         dept_defs = [
-            ("Yellow", "yellow"),
-            ("Blue", "blue"),
-            ("Green", "green"),
-            ("Purple", "purple"),
-            ("Orange", "orange"),
+            "Admin",
+            "HR",
+            "Finance",
+            "IT",
         ]
         positions = []
-        for office in offices:
-            for dep_name, dep_color in dept_defs:
-                dep = Department.objects.create(
-                    office=office,
-                    name=dep_name,
-                    color=dep_color,
-                )
-                for idx in range(1, 11):
-                    positions.append(
-                        DepartmentPosition.objects.create(
-                            department=dep,
-                            number=idx,
-                        )
+        for dep_name in dept_defs:
+            dep = Department.objects.create(name=dep_name)
+            for idx in range(1, 11):
+                positions.append(
+                    DepartmentPosition.objects.create(
+                        department=dep,
+                        number=idx,
                     )
+                )
 
         # ---------- DESKS ----------
         desks = []
@@ -183,8 +177,7 @@ class Command(BaseCommand):
                 loan.office = random.choice(offices)
             else:
                 position = random.choice(positions)
-                loan.department_position = position
-                loan.department = str(position)
+                loan.department = position.department.name
 
             loan.save()
 

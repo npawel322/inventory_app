@@ -53,8 +53,9 @@
   (function () {
     const officeField = document.getElementById("id_office");
     const deskField = document.getElementById("id_desk");
-    const departmentField = document.getElementById("id_department_position");
-
+    const personField = document.getElementById("id_person");
+    const departmentField = document.getElementById("id_department");
+    const targetTypeField = document.querySelector('input[name="target_type"]');
     if (!officeField) {
       return;
     }
@@ -95,15 +96,70 @@
     }
 
     const renderDeskOptions = setupFilteredSelect(deskField);
-    const renderDepartmentOptions = setupFilteredSelect(departmentField);
 
     function renderAll() {
       renderDeskOptions();
-      renderDepartmentOptions();
+    }
+
+    function setDepartmentFromPerson() {
+      if (!personField || !departmentField) {
+        return;
+      }
+      const selected = personField.options[personField.selectedIndex];
+      const department = selected ? (selected.dataset.department || "") : "";
+      if (!department) {
+        return;
+      }
+      if (departmentField.tagName === "INPUT") {
+        departmentField.value = department;
+        return;
+      }
+      // Try direct match first
+      departmentField.value = department;
+      if (departmentField.value === department) {
+        return;
+      }
+      const normalized = department.trim().toLowerCase();
+      const match = Array.from(departmentField.options).find(
+        (opt) => opt.value.trim().toLowerCase() === normalized || opt.text.trim().toLowerCase() === normalized
+      );
+      if (match) {
+        departmentField.value = match.value;
+        return;
+      }
+      // Fallback: add missing option
+      const opt = new Option(department, department, true, true);
+      departmentField.add(opt);
+    }
+
+    function toggleDepartmentField() {
+      if (!departmentField || !targetTypeField) {
+        return;
+      }
+      const checked = document.querySelector('input[name="target_type"]:checked');
+      const target = checked ? checked.value : "";
+      if (target === "person") {
+        setDepartmentFromPerson();
+      } else if (target === "office") {
+        departmentField.value = "";
+      }
+      if (departmentField.tagName === "SELECT") {
+        departmentField.disabled = true;
+      }
     }
 
     officeField.addEventListener("change", renderAll);
     renderAll();
+    if (personField) {
+      personField.addEventListener("change", () => {
+        setDepartmentFromPerson();
+        toggleDepartmentField();
+      });
+    }
+    document.querySelectorAll('input[name="target_type"]').forEach((el) => {
+      el.addEventListener("change", toggleDepartmentField);
+    });
+    toggleDepartmentField();
   })();
 </script>
 {% endblock %}

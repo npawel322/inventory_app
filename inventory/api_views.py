@@ -44,7 +44,7 @@ class DeskViewSet(viewsets.ModelViewSet):
 
 class LoanViewSet(viewsets.ModelViewSet):
     queryset = Loan.objects.select_related(
-        "asset", "person", "desk__room__office", "office", "department_position__department__office"
+        "asset", "person", "desk__room__office", "office"
     ).all().order_by("-id")
     serializer_class = LoanSerializer
 

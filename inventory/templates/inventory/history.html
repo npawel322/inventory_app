@@ -2,7 +2,38 @@
 {% block content %}
 <h3>{% if is_admin %}History{% else %}My history{% endif %}</h3>
 <table class="table table-striped mt-3">
-  <tr><th>Asset</th><th>Office</th><th>Desk</th><th>Department</th><th>Target</th><th>Issue</th><th>Due</th><th>Return</th></tr>
+  <tr>
+    <th>Asset</th>
+    <th>Office</th>
+    <th>Desk</th>
+    <th>Department</th>
+    <th>Target</th>
+    <th>
+      Issue
+      {% if sort_field == "issue" %}
+        {% if sort_dir == "asc" %}
+          <a class="text-decoration-none" href="?sort=issue&dir=desc">&uarr;</a>
+        {% else %}
+          <a class="text-decoration-none" href="?sort=issue&dir=asc">&darr;</a>
+        {% endif %}
+      {% else %}
+        <a class="text-decoration-none" href="?sort=issue&dir=asc">&uarr;</a>
+      {% endif %}
+    </th>
+    <th>
+      Due
+      {% if sort_field == "due" %}
+        {% if sort_dir == "asc" %}
+          <a class="text-decoration-none" href="?sort=due&dir=desc">&uarr;</a>
+        {% else %}
+          <a class="text-decoration-none" href="?sort=due&dir=asc">&darr;</a>
+        {% endif %}
+      {% else %}
+        <a class="text-decoration-none" href="?sort=due&dir=asc">&uarr;</a>
+      {% endif %}
+    </th>
+    <th>Return</th>
+  </tr>
   {% for l in loans %}
     <tr class="{% if l.return_date is None and l.due_date and l.due_date < today %}table-danger{% endif %}">
       <td>{{ l.asset }}</td>

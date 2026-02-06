@@ -48,8 +48,14 @@ def _apply_role(user: User, role: str):
     user.save(update_fields=["is_staff", "is_superuser"])
 
 
+def _get_department_choices():
+    departments = Department.objects.order_by("name")
+    return [("", "---------")] + [(str(dep), str(dep)) for dep in departments]
+
+
 class UserRoleChangeForm(forms.ModelForm):
     role = forms.ChoiceField(choices=ROLE_CHOICES, required=True)
+    department = forms.ChoiceField(required=False)
 
     class Meta:
         model = User
@@ -62,15 +68,21 @@ class UserRoleChangeForm(forms.ModelForm):
         else:
             self.fields["role"].initial = ROLE_EMPLOYEE
 
+        self.fields["department"].choices = _get_department_choices()
+        person = getattr(self.instance, "person_profile", None)
+        if person and person.department:
+            self.fields["department"].initial = person.department
+
 
 class UserRoleAddForm(forms.ModelForm):
     role = forms.ChoiceField(choices=ROLE_CHOICES, required=True)
     password1 = forms.CharField(label="Password", widget=forms.PasswordInput)
     password2 = forms.CharField(label="Password confirmation", widget=forms.PasswordInput)
+    department = forms.ChoiceField(required=False)
 
     class Meta:
         model = User
-        fields = ("username", "email", "first_name", "last_name", "is_active", "role")
+        fields = ("username", "email", "first_name", "last_name", "is_active", "role", "department")
 
     def clean(self):
         cleaned = super().clean()
@@ -79,6 +91,10 @@ class UserRoleAddForm(forms.ModelForm):
         if p1 and p2 and p1 != p2:
             self.add_error("password2", "Passwords do not match")
         return cleaned
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["department"].choices = _get_department_choices()
 
     def save(self, commit=True):
         user: User = super().save(commit=False)
@@ -104,7 +120,7 @@ class UserAdmin(DjangoUserAdmin):
 
     fieldsets = (
         (None, {"fields": ("username", "password")}),
-        ("Personal info", {"fields": ("first_name", "last_name", "email")}),
+        ("Personal info", {"fields": ("first_name", "last_name", "email", "department")}),
         ("Role", {"fields": ("is_active", "role")}),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
     )
@@ -112,7 +128,17 @@ class UserAdmin(DjangoUserAdmin):
     add_fieldsets = (
         (None, {
             "classes": ("wide",),
-            "fields": ("username", "email", "first_name", "last_name", "is_active", "role", "password1", "password2"),
+            "fields": (
+                "username",
+                "email",
+                "first_name",
+                "last_name",
+                "department",
+                "is_active",
+                "role",
+                "password1",
+                "password2",
+            ),
         }),
     )
 
@@ -120,6 +146,7 @@ class UserAdmin(DjangoUserAdmin):
         super().save_model(request, obj, form, change)
 
         role = form.cleaned_data.get("role") or ROLE_EMPLOYEE
+        department_label = (form.cleaned_data.get("department") or "").strip() or None
         _apply_role(obj, role)
 
         if role == ROLE_EMPLOYEE:
@@ -139,6 +166,7 @@ class UserAdmin(DjangoUserAdmin):
                 if not person.email:
                     person.email = obj.email or ""
 
+                person.department = department_label
                 person.save()
 
             else:
@@ -148,7 +176,7 @@ class UserAdmin(DjangoUserAdmin):
                         "first_name": obj.first_name or "",
                         "last_name": obj.last_name or "",
                         "email": obj.email or "",
-                        "department": "",
+                        "department": department_label or "",
                     }
                 )
 

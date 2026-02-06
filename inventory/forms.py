@@ -9,11 +9,10 @@ from .models import Asset, Department, DepartmentPosition, Desk, Loan, Office, P
 
 
 DEFAULT_DEPARTMENTS = [
-    ("Yellow", "yellow"),
-    ("Blue", "blue"),
-    ("Green", "green"),
-    ("Purple", "purple"),
-    ("Orange", "orange"),
+    "Admin",
+    "HR",
+    "Finance",
+    "IT",
 ]
 
 
@@ -74,6 +73,24 @@ class DeskByOfficeSelect(forms.Select):
         return option
 
 
+class PersonDepartmentSelect(forms.Select):
+    """Adds department metadata to person <option> tags for client-side fill."""
+
+    def __init__(self, *args, person_department_map=None, **kwargs):
+        self.person_department_map = person_department_map or {}
+        super().__init__(*args, **kwargs)
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        if value is None:
+            return option
+        raw_value = getattr(value, "value", value)
+        department = self.person_department_map.get(str(raw_value))
+        if department:
+            option["attrs"]["data-department"] = department
+        return option
+
+
 class DepartmentPositionByOfficeSelect(forms.Select):
     """Adds office metadata to department position options."""
 
@@ -100,64 +117,55 @@ def _add_one_month(value: date) -> date:
 
 
 def _ensure_default_departments() -> None:
-    """Each office gets 5 departments and each department 10 positions."""
-    for office in Office.objects.all():
-        for name, color in DEFAULT_DEPARTMENTS:
-            department, _ = Department.objects.get_or_create(
-                office=office,
-                name=name,
-                defaults={"color": color},
-            )
-            if department.color != color:
-                department.color = color
-                department.save(update_fields=["color"])
+    """Global departments, each with 10 positions."""
+    for name in DEFAULT_DEPARTMENTS:
+        department, _ = Department.objects.get_or_create(name=name)
 
-            existing = set(department.positions.values_list("number", flat=True))
-            missing = [
-                DepartmentPosition(department=department, number=idx)
-                for idx in range(1, 11)
-                if idx not in existing
-            ]
-            if missing:
-                DepartmentPosition.objects.bulk_create(missing)
+        existing = set(department.positions.values_list("number", flat=True))
+        missing = [
+            DepartmentPosition(department=department, number=idx)
+            for idx in range(1, 11)
+            if idx not in existing
+        ]
+        if missing:
+            DepartmentPosition.objects.bulk_create(missing)
 
 
-def _configure_department_position_field(form: forms.Form) -> None:
+def _configure_department_field(form: forms.Form) -> None:
     _ensure_default_departments()
+    field = form.fields.get("department")
+    if not field:
+        return
+    field.widget = forms.Select()
+    field.choices = [("", "---------")] + [
+        (d.name, d.name) for d in Department.objects.order_by("name")
+    ]
+    _bootstrapify(form)
 
-    active_position_ids = Loan.objects.filter(
-        return_date__isnull=True,
-        department_position__isnull=False,
-    ).values_list("department_position_id", flat=True)
 
-    positions_qs = DepartmentPosition.objects.select_related("department__office").exclude(
-        pk__in=active_position_ids
-    ).order_by(
-        "department__office__name", "department__name", "number"
-    )
-    field = form.fields.get("department_position")
+def _configure_asset_field(form: forms.Form) -> None:
+    field = form.fields.get("asset")
     if not field:
         return
 
-    square_by_color = {
-        "yellow": "🟨",
-        "blue": "🟦",
-        "green": "🟩",
-        "purple": "🟪",
-        "orange": "🟧",
-    }
+    # Replace ModelChoice with plain Choice of unique names
+    names = list(
+        Asset.objects.filter(status="available")
+        .values_list("name", flat=True)
+        .distinct()
+        .order_by("name")
+    )
+    form.fields["asset"] = forms.ChoiceField(
+        choices=[("", "---------")] + [(n, n) for n in names],
+        required=True,
+    )
+    _bootstrapify(form)
 
-    field.queryset = positions_qs
-    field.label_from_instance = (
-        lambda pos: f"{square_by_color.get(pos.department.color, '⬜')} #{pos.number}"
-    )
-    field.widget = DepartmentPositionByOfficeSelect(
-        position_meta_map={
-            str(pos.pk): pos.department.office_id
-            for pos in positions_qs
-        }
-    )
-    field.widget.choices = field.choices
+
+def _resolve_asset_by_name(name: str) -> Asset | None:
+    if not name:
+        return None
+    return Asset.objects.filter(status="available", name=name).order_by("id").first()
 
 
 def _configure_loan_date_fields(form: forms.Form, *, company_due_default: bool = False) -> None:
@@ -198,26 +206,20 @@ def _assign_legacy_department_label(loan: Loan) -> None:
         loan.department = loan.person.department
         return
 
-    # 2) w pozostałych przypadkach (desk/department) bierz z department_position
-    if loan.department_position:
-        loan.department = str(loan.department_position)
-    elif not loan.department:
+    # 2) w pozostałych przypadkach bierz bezpośrednio z pola department
+    if not loan.department:
         loan.department = None
 
 
 
-def _is_department_position_available(position: DepartmentPosition) -> bool:
-    return not position.loans.filter(return_date__isnull=True).exists()
 
 
 class AdminLoanForm(forms.ModelForm):
-    """Admin can create loans to any target type (person/desk/office/department)."""
+    """Admin can create loans to a person or an office."""
 
     TARGET_CHOICES = [
         ("person", "Person"),
-        ("desk", "Desk"),
         ("office", "Office"),
-        ("department", "Department"),
     ]
     target_type = forms.ChoiceField(choices=TARGET_CHOICES, widget=forms.RadioSelect)
 
@@ -228,8 +230,7 @@ class AdminLoanForm(forms.ModelForm):
             "target_type",
             "person",
             "office",
-            "desk",
-            "department_position",
+            "department",
             "loan_date",
             "due_date",
         ]
@@ -241,25 +242,25 @@ class AdminLoanForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields["asset"].queryset = Asset.objects.filter(status="available").order_by("name")
-        self.fields["person"].queryset = Person.objects.order_by("last_name", "first_name")
+        _configure_asset_field(self)
+        persons_qs = Person.objects.order_by("last_name", "first_name")
+        self.fields["person"].queryset = persons_qs
+        self.fields["person"].widget = PersonDepartmentSelect(
+            person_department_map={
+                str(person.pk): (person.department or "").strip()
+                for person in persons_qs
+            }
+        )
+        self.fields["person"].widget.choices = self.fields["person"].choices
         self.fields["office"].queryset = Office.objects.order_by("name")
-
-        desks_qs = Desk.objects.select_related("room__office").order_by(
-            "room__office__name", "room__name", "code"
+        self.fields["department"] = forms.CharField(
+            required=False,
+            widget=forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
         )
-        self.fields["desk"].queryset = desks_qs
-        self.fields["desk"].widget = DeskByOfficeSelect(
-            desk_office_map={str(desk.pk): desk.room.office_id for desk in desks_qs}
-        )
-        self.fields["desk"].widget.choices = self.fields["desk"].choices
-
-        _configure_department_position_field(self)
 
         self.fields["person"].required = False
-        self.fields["desk"].required = False
         self.fields["office"].required = False
-        self.fields["department_position"].required = False
+        self.fields["department"].required = False
 
         _bootstrapify(self)
         _configure_loan_date_fields(self)
@@ -267,22 +268,18 @@ class AdminLoanForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         target_type = cleaned.get("target_type")
-        asset = cleaned.get("asset")
-
+        asset_name = cleaned.get("asset")
+        asset = _resolve_asset_by_name(asset_name)
         if not asset:
-            raise ValidationError("Asset is required.")
-        if asset.status != "available":
-            raise ValidationError("Selected asset is not available.")
+            raise ValidationError({"asset": "Asset is required."})
+        cleaned["asset"] = asset
 
         person = cleaned.get("person")
-        desk = cleaned.get("desk")
         office = cleaned.get("office")
-        department_position = cleaned.get("department_position")
+        department = (cleaned.get("department") or "").strip()
 
         cleaned["person"] = None
-        cleaned["desk"] = None
         cleaned["office"] = None
-        cleaned["department_position"] = None
         cleaned["department"] = None
 
         if target_type == "person":
@@ -293,35 +290,10 @@ class AdminLoanForm(forms.ModelForm):
             
             cleaned["department"] = (person.department or "").strip() or None
 
-        elif target_type == "desk":
-            if not desk:
-                raise ValidationError("Select a desk.")
-            if not department_position:
-                raise ValidationError({"department_position": "Select a department position."})
-            if office and desk.room.office_id != office.id:
-                raise ValidationError({"desk": "Selected desk is not in the chosen office."})
-            if department_position.department.office_id != desk.room.office_id:
-                raise ValidationError({"department_position": "Selected department is not in the desk office."})
-            if not _is_department_position_available(department_position):
-                raise ValidationError({"department_position": "Selected department position is already assigned."})
-            cleaned["desk"] = desk
-            cleaned["department_position"] = department_position
-            cleaned["department"] = str(department_position)
-
         elif target_type == "office":
             if not office:
                 raise ValidationError("Select an office.")
             cleaned["office"] = office
-
-        elif target_type == "department":
-            if not department_position:
-                raise ValidationError("Select a department position.")
-            if office and department_position.department.office_id != office.id:
-                raise ValidationError({"department_position": "Selected department is not in the chosen office."})
-            if not _is_department_position_available(department_position):
-                raise ValidationError({"department_position": "Selected department position is already assigned."})
-            cleaned["department_position"] = department_position
-            cleaned["department"] = str(department_position)
 
         else:
             raise ValidationError("Choose loan target type.")
@@ -343,7 +315,7 @@ class CompanyLoanForm(forms.ModelForm):
 
     class Meta:
         model = Loan
-        fields = ["asset", "office", "department_position", "loan_date", "due_date"]
+        fields = ["asset", "office", "department", "loan_date", "due_date"]
         widgets = {
             "loan_date": forms.DateInput(attrs={"type": "date"}),
             "due_date": forms.DateInput(attrs={"type": "date"}),
@@ -352,38 +324,34 @@ class CompanyLoanForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields["asset"].queryset = Asset.objects.filter(status="available").order_by("name")
+        _configure_asset_field(self)
         self.fields["office"].queryset = Office.objects.order_by("name")
 
-        _configure_department_position_field(self)
+        _configure_department_field(self)
 
         self.fields["office"].required = True
-        self.fields["department_position"].required = True
+        self.fields["department"].required = True
 
         _bootstrapify(self)
         _configure_loan_date_fields(self, company_due_default=True)
 
     def clean(self):
         cleaned = super().clean()
-        asset = cleaned.get("asset")
+        asset_name = cleaned.get("asset")
+        asset = _resolve_asset_by_name(asset_name)
         office = cleaned.get("office")
-        department_position = cleaned.get("department_position")
+        department = (cleaned.get("department") or "").strip()
 
         if not asset:
-            raise ValidationError("Asset is required.")
-        if asset.status != "available":
-            raise ValidationError("Selected asset is not available.")
+            raise ValidationError({"asset": "Asset is required."})
+        cleaned["asset"] = asset
 
         if not office:
             raise ValidationError("Office is required.")
-        if not department_position:
+        if not department:
             raise ValidationError("Department is required.")
-        if department_position.department.office_id != office.id:
-            raise ValidationError({"department_position": "Selected department is not in the chosen office."})
-        if not _is_department_position_available(department_position):
-            raise ValidationError({"department_position": "Selected department position is already assigned."})
 
-        cleaned["department"] = str(department_position)
+        cleaned["department"] = department
 
         _validate_loan_dates(cleaned)
         return cleaned
@@ -404,7 +372,7 @@ class EmployeeLoanForm(forms.ModelForm):
         self.user = user
         super().__init__(*args, **kwargs)
 
-        self.fields["asset"].queryset = Asset.objects.filter(status="available").order_by("name")
+        _configure_asset_field(self)
         self.fields["office"].queryset = Office.objects.order_by("name")
 
         desks_qs = Desk.objects.select_related("room__office").order_by(
@@ -416,10 +384,10 @@ class EmployeeLoanForm(forms.ModelForm):
         )
         self.fields["desk"].widget.choices = self.fields["desk"].choices
 
-        _configure_department_position_field(self)
+        _configure_department_field(self)
 
         self.fields["office"].required = True
-        self.fields["department_position"].required = True
+        self.fields["department"].required = True
         self.fields["desk"].required = True
 
         _bootstrapify(self)
@@ -427,7 +395,7 @@ class EmployeeLoanForm(forms.ModelForm):
 
     class Meta:
         model = Loan
-        fields = ["asset", "office", "department_position", "desk", "loan_date", "due_date"]
+        fields = ["asset", "office", "department", "desk", "loan_date", "due_date"]
         widgets = {
             "loan_date": forms.DateInput(attrs={"type": "date"}),
             "due_date": forms.DateInput(attrs={"type": "date"}),
@@ -451,24 +419,20 @@ class EmployeeLoanForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        asset = cleaned.get("asset")
+        asset_name = cleaned.get("asset")
+        asset = _resolve_asset_by_name(asset_name)
         office = cleaned.get("office")
         desk = cleaned.get("desk")
-        department_position = cleaned.get("department_position")
+        department = (cleaned.get("department") or "").strip()
 
         if not asset:
-            raise ValidationError("Asset is required.")
-        if asset.status != "available":
-            raise ValidationError("Selected asset is not available.")
+            raise ValidationError({"asset": "Asset is required."})
+        cleaned["asset"] = asset
 
         if not office:
             raise ValidationError("Office is required.")
-        if not department_position:
+        if not department:
             raise ValidationError("Department is required.")
-        if department_position.department.office_id != office.id:
-            raise ValidationError({"department_position": "Selected department is not in the chosen office."})
-        if not _is_department_position_available(department_position):
-            raise ValidationError({"department_position": "Selected department position is already assigned."})
 
         if not desk:
             raise ValidationError("Desk is required.")
@@ -482,7 +446,7 @@ class EmployeeLoanForm(forms.ModelForm):
             )
 
         self._resolved_person = person
-        cleaned["department"] = str(department_position)
+        cleaned["department"] = department
         _validate_loan_dates(cleaned)
         return cleaned
 

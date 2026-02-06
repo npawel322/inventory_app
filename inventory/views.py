@@ -93,8 +93,8 @@ def _resolve_person_for_user(user):
 def loans_list(request):
     role = get_user_role(request.user)
     base_qs = Loan.objects.select_related(
-        "asset", "person", "desk__room__office", "office", "department_position__department__office", "created_by"
-    ).filter(return_date__isnull=True).order_by("-id")
+        "asset", "person", "desk__room__office", "office", "created_by"
+    ).filter(return_date__isnull=True)
 
     person = _resolve_person_for_user(request.user)
 
@@ -106,6 +106,13 @@ def loans_list(request):
             q |= Q(person=person)
         loans = base_qs.filter(q)
 
+    sort_field = request.GET.get("sort") or "issue"
+    sort_dir = request.GET.get("dir") or "desc"
+    sort_map = {"issue": "loan_date", "due": "due_date"}
+    sort_attr = sort_map.get(sort_field, "loan_date")
+    prefix = "" if sort_dir == "asc" else "-"
+    loans = loans.order_by(f"{prefix}{sort_attr}", "-id")
+
     is_admin = role == ROLE_ADMIN
     return render(
         request,
@@ -116,6 +123,8 @@ def loans_list(request):
             "is_admin": is_admin,
             "role": role,
             'cancel_url': 'loans_list',
+            "sort_field": sort_field,
+            "sort_dir": sort_dir,
         },
     )
 
@@ -204,8 +213,8 @@ def loan_return(request, loan_id: int):
 def history(request):
     role = get_user_role(request.user)
     base_qs = Loan.objects.select_related(
-        "asset", "person", "desk__room__office", "office", "department_position__department__office", "created_by"
-    ).order_by("-id")
+        "asset", "person", "desk__room__office", "office", "created_by"
+    )
 
     person = _resolve_person_for_user(request.user)
 
@@ -217,8 +226,22 @@ def history(request):
             q |= Q(person=person)
         loans = base_qs.filter(q)
 
+    sort_field = request.GET.get("sort") or "issue"
+    sort_dir = request.GET.get("dir") or "desc"
+    sort_map = {"issue": "loan_date", "due": "due_date"}
+    sort_attr = sort_map.get(sort_field, "loan_date")
+    prefix = "" if sort_dir == "asc" else "-"
+    loans = loans.order_by(f"{prefix}{sort_attr}", "-id")
+
     return render(
         request,
         "inventory/history.html",
-        {"loans": loans, "today": timezone.now().date(), "role": role, "is_admin": role == ROLE_ADMIN},
+        {
+            "loans": loans,
+            "today": timezone.now().date(),
+            "role": role,
+            "is_admin": role == ROLE_ADMIN,
+            "sort_field": sort_field,
+            "sort_dir": sort_dir,
+        },
     )
