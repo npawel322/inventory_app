@@ -33,7 +33,6 @@ class AssetForm(forms.ModelForm):
             )
 
 
-
 class PersonForm(forms.ModelForm):
     class Meta:
         model = Person
@@ -201,17 +200,14 @@ def _validate_loan_dates(cleaned: dict) -> None:
 
 
 def _assign_legacy_department_label(loan: Loan) -> None:
-    # 1) jeśli wypożyczenie jest na osobę i osoba ma department -> to wygrywa
+    # If loan is linked to a person and person has department -> use it
     if loan.person and loan.person.department:
         loan.department = loan.person.department
         return
 
-    # 2) w pozostałych przypadkach bierz bezpośrednio z pola department
+    # Otherwise keep department as-is (or clear if empty)
     if not loan.department:
         loan.department = None
-
-
-
 
 
 class AdminLoanForm(forms.ModelForm):
@@ -230,6 +226,7 @@ class AdminLoanForm(forms.ModelForm):
             "target_type",
             "person",
             "office",
+            "desk",
             "department",
             "loan_date",
             "due_date",
@@ -243,6 +240,7 @@ class AdminLoanForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         _configure_asset_field(self)
+
         persons_qs = Person.objects.order_by("last_name", "first_name")
         self.fields["person"].queryset = persons_qs
         self.fields["person"].widget = PersonDepartmentSelect(
@@ -252,14 +250,28 @@ class AdminLoanForm(forms.ModelForm):
             }
         )
         self.fields["person"].widget.choices = self.fields["person"].choices
+
         self.fields["office"].queryset = Office.objects.order_by("name")
+
+        desks_qs = Desk.objects.select_related("room__office").order_by(
+            "room__office__name", "room__name", "code"
+        )
+        self.fields["desk"].queryset = desks_qs
+        self.fields["desk"].widget = DeskByOfficeSelect(
+            desk_office_map={str(d.pk): d.room.office_id for d in desks_qs}
+        )
+        self.fields["desk"].widget.choices = self.fields["desk"].choices
+
+        # Readonly department snapshot (filled from person when target_type=person)
         self.fields["department"] = forms.CharField(
             required=False,
             widget=forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
         )
 
+        # required depends on target_type -> enforce in clean()
         self.fields["person"].required = False
         self.fields["office"].required = False
+        self.fields["desk"].required = False
         self.fields["department"].required = False
 
         _bootstrapify(self)
@@ -268,6 +280,7 @@ class AdminLoanForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         target_type = cleaned.get("target_type")
+
         asset_name = cleaned.get("asset")
         asset = _resolve_asset_by_name(asset_name)
         if not asset:
@@ -276,46 +289,63 @@ class AdminLoanForm(forms.ModelForm):
 
         person = cleaned.get("person")
         office = cleaned.get("office")
-        department = (cleaned.get("department") or "").strip()
+        desk = cleaned.get("desk")
 
-        cleaned["person"] = None
-        cleaned["office"] = None
+        # always reset department, we set it explicitly below
         cleaned["department"] = None
 
         if target_type == "person":
             if not person:
-                raise ValidationError("Select a person.")
-            cleaned["person"] = person
+                raise ValidationError({"person": "Select a person."})
+            if not office:
+                raise ValidationError({"office": "Office is required for person loans."})
+            if not desk:
+                raise ValidationError({"desk": "Desk is required for person loans."})
 
-            
+            if desk.room.office_id != office.id:
+                raise ValidationError({"desk": "Selected desk is not in the chosen office."})
+
+            # department snapshot from person profile
             cleaned["department"] = (person.department or "").strip() or None
 
         elif target_type == "office":
             if not office:
-                raise ValidationError("Select an office.")
-            cleaned["office"] = office
+                raise ValidationError({"office": "Select an office."})
+
+            # department MUST be empty for office loans
+            cleaned["person"] = None
+            cleaned["department"] = None
 
         else:
-            raise ValidationError("Choose loan target type.")
+            raise ValidationError({"target_type": "Choose loan target type."})
 
         _validate_loan_dates(cleaned)
         return cleaned
 
     def save(self, commit=True):
         loan: Loan = super().save(commit=False)
+
+        # enforce final department rules
+        if getattr(loan, "person", None):
+            loan.department = (loan.person.department or "").strip() or None
+        else:
+            loan.department = None
+
         _assign_legacy_department_label(loan)
+
         if commit:
             loan.save()
             self.save_m2m()
         return loan
 
 
+
 class CompanyLoanForm(forms.ModelForm):
-    """Company can loan to a department position within an office."""
+    """Company can loan to a department within an office."""
 
     class Meta:
         model = Loan
-        fields = ["asset", "office", "department", "loan_date", "due_date"]
+        fields = ["asset", "office", "loan_date", "due_date"]
         widgets = {
             "loan_date": forms.DateInput(attrs={"type": "date"}),
             "due_date": forms.DateInput(attrs={"type": "date"}),
@@ -330,26 +360,27 @@ class CompanyLoanForm(forms.ModelForm):
         _configure_department_field(self)
 
         self.fields["office"].required = True
-        self.fields["department"].required = True
+        #self.fields["department"].required = True
 
         _bootstrapify(self)
         _configure_loan_date_fields(self, company_due_default=True)
 
     def clean(self):
         cleaned = super().clean()
+
         asset_name = cleaned.get("asset")
         asset = _resolve_asset_by_name(asset_name)
-        office = cleaned.get("office")
-        department = (cleaned.get("department") or "").strip()
-
         if not asset:
             raise ValidationError({"asset": "Asset is required."})
         cleaned["asset"] = asset
 
+        office = cleaned.get("office")
+        department = (cleaned.get("department") or "").strip()
+
         if not office:
             raise ValidationError("Office is required.")
-        if not department:
-            raise ValidationError("Department is required.")
+        #if not department:
+         #   raise ValidationError("Department is required.")
 
         cleaned["department"] = department
 
@@ -366,7 +397,15 @@ class CompanyLoanForm(forms.ModelForm):
 
 
 class EmployeeLoanForm(forms.ModelForm):
-    """Employee loans for themselves: person auto, desk selectable."""
+    """Employee loans for themselves: department is taken from Person profile, no department field in form."""
+
+    class Meta:
+        model = Loan
+        fields = ["asset", "office", "desk", "loan_date", "due_date"]
+        widgets = {
+            "loan_date": forms.DateInput(attrs={"type": "date"}),
+            "due_date": forms.DateInput(attrs={"type": "date"}),
+        }
 
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
@@ -384,22 +423,11 @@ class EmployeeLoanForm(forms.ModelForm):
         )
         self.fields["desk"].widget.choices = self.fields["desk"].choices
 
-        _configure_department_field(self)
-
         self.fields["office"].required = True
-        self.fields["department"].required = True
         self.fields["desk"].required = True
 
         _bootstrapify(self)
         _configure_loan_date_fields(self)
-
-    class Meta:
-        model = Loan
-        fields = ["asset", "office", "department", "desk", "loan_date", "due_date"]
-        widgets = {
-            "loan_date": forms.DateInput(attrs={"type": "date"}),
-            "due_date": forms.DateInput(attrs={"type": "date"}),
-        }
 
     def _resolve_person(self) -> Person | None:
         if not self.user or not getattr(self.user, "is_authenticated", False):
@@ -419,20 +447,18 @@ class EmployeeLoanForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+
         asset_name = cleaned.get("asset")
         asset = _resolve_asset_by_name(asset_name)
-        office = cleaned.get("office")
-        desk = cleaned.get("desk")
-        department = (cleaned.get("department") or "").strip()
-
         if not asset:
             raise ValidationError({"asset": "Asset is required."})
         cleaned["asset"] = asset
 
+        office = cleaned.get("office")
+        desk = cleaned.get("desk")
+
         if not office:
             raise ValidationError("Office is required.")
-        if not department:
-            raise ValidationError("Department is required.")
 
         if not desk:
             raise ValidationError("Desk is required.")
@@ -446,14 +472,20 @@ class EmployeeLoanForm(forms.ModelForm):
             )
 
         self._resolved_person = person
-        cleaned["department"] = department
+
         _validate_loan_dates(cleaned)
         return cleaned
 
     def save(self, commit=True):
         loan: Loan = super().save(commit=False)
+
+        # link loan to employee and persist department snapshot
         loan.person = getattr(self, "_resolved_person", None)
+        if loan.person:
+            loan.department = (loan.person.department or "").strip() or None
+
         _assign_legacy_department_label(loan)
+
         if commit:
             loan.save()
             self.save_m2m()

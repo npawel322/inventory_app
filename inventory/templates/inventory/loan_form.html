@@ -1,5 +1,6 @@
 {% extends "inventory/base.html" %}
 {% block content %}
+
 <h3>New loan</h3>
 
 {% if role != "admin" %}
@@ -9,12 +10,13 @@
       {% if person %}
         This request will be created for: <b>{{ person }}</b>.
       {% else %}
-        Your account is not linked to an employee profile yet. Ask admin to link your user to a Person record (or set matching email).
+        Your account is not linked to an employee profile yet.
+        Ask admin to link your user to a Person record (or set matching email).
       {% endif %}
     </div>
   {% elif role == "company" %}
     <div class="alert alert-secondary">
-      <b>Borrowing as company.</b> Choose office + department.
+      <b>Borrowing as company.</b> Choose office.
     </div>
   {% endif %}
 {% endif %}
@@ -27,9 +29,11 @@
     <div class="mb-3">
       <label class="form-label">{{ field.label }}</label>
       {{ field }}
+
       {% if field.errors %}
         <div class="text-danger small">{{ field.errors|striptags }}</div>
       {% endif %}
+
       {% if field.help_text %}
         <div class="form-text">{{ field.help_text }}</div>
       {% endif %}
@@ -45,121 +49,138 @@
       <a href="{% url 'loans_list' %}" class="btn btn-secondary">Cancel</a>
     {% endif %}
   </div>
-
-  
 </form>
 
 <script>
   (function () {
     const officeField = document.getElementById("id_office");
     const deskField = document.getElementById("id_desk");
+    const departmentPosField = document.getElementById("id_department_position");
+
+    // Admin-only fields (may not exist for employee/company forms)
     const personField = document.getElementById("id_person");
     const departmentField = document.getElementById("id_department");
-    const targetTypeField = document.querySelector('input[name="target_type"]');
-    if (!officeField) {
-      return;
+
+    function groupOf(el) {
+      return el ? el.closest(".mb-3") : null;
     }
 
-    function setupFilteredSelect(selectField) {
-      if (!selectField) {
-        return () => {};
-      }
+    const personGroup = groupOf(personField);
+    const departmentGroup = groupOf(departmentField);
+    const deskGroup = groupOf(deskField);
 
-      const allOptions = Array.from(selectField.options).map((option) => ({
-        value: option.value,
-        label: option.text,
-        officeId: option.dataset.officeId || "",
+    // --- filtering select by office (desk + optional dept_position) ---
+    function setupFilteredSelect(selectField, datasetKey) {
+      if (!selectField || !officeField) return () => {};
+
+      const allOptions = Array.from(selectField.options).map((opt) => ({
+        value: opt.value,
+        label: opt.text,
+        officeId: opt.dataset && opt.dataset[datasetKey] ? opt.dataset[datasetKey] : "",
+        isPlaceholder: !opt.value,
       }));
-      const placeholderLabel = allOptions.find((option) => !option.value)?.label || "---------";
+
+      const placeholder = allOptions.find((o) => o.isPlaceholder) || { label: "---------", value: "" };
 
       return function renderOptions() {
         const selectedOfficeId = officeField.value;
         const currentValue = selectField.value;
 
         selectField.innerHTML = "";
-        selectField.appendChild(new Option(placeholderLabel, ""));
+        selectField.appendChild(new Option(placeholder.label, ""));
 
-        allOptions.forEach((option) => {
-          if (!option.value) {
-            return;
-          }
-          if (selectedOfficeId && option.officeId !== selectedOfficeId) {
-            return;
-          }
-          selectField.appendChild(new Option(option.label, option.value));
+        allOptions.forEach((o) => {
+          if (o.isPlaceholder) return;
+          if (selectedOfficeId && o.officeId !== selectedOfficeId) return;
+
+          const opt = new Option(o.label, o.value);
+          opt.dataset[datasetKey] = o.officeId; // keep dataset for future filtering
+          selectField.appendChild(opt);
         });
 
-        const hasCurrentValue = Array.from(selectField.options).some((option) => option.value === currentValue);
-        selectField.value = hasCurrentValue ? currentValue : "";
+        const stillExists = Array.from(selectField.options).some((opt) => opt.value === currentValue);
+        selectField.value = stillExists ? currentValue : "";
         selectField.disabled = !selectedOfficeId;
       };
     }
 
-    const renderDeskOptions = setupFilteredSelect(deskField);
+    const renderDeskOptions = setupFilteredSelect(deskField, "officeId");
+    const renderDepartmentOptions = setupFilteredSelect(departmentPosField, "officeId");
 
     function renderAll() {
       renderDeskOptions();
+      renderDepartmentOptions();
+    }
+
+    // --- admin: target_type toggling (hide/disable person + department) ---
+    function getTargetType() {
+      const checked = document.querySelector('input[name="target_type"]:checked');
+      return checked ? checked.value : "";
     }
 
     function setDepartmentFromPerson() {
-      if (!personField || !departmentField) {
-        return;
-      }
+      if (!personField || !departmentField) return;
+
       const selected = personField.options[personField.selectedIndex];
-      const department = selected ? (selected.dataset.department || "") : "";
-      if (!department) {
-        return;
-      }
-      if (departmentField.tagName === "INPUT") {
-        departmentField.value = department;
-        return;
-      }
-      // Try direct match first
-      departmentField.value = department;
-      if (departmentField.value === department) {
-        return;
-      }
-      const normalized = department.trim().toLowerCase();
-      const match = Array.from(departmentField.options).find(
-        (opt) => opt.value.trim().toLowerCase() === normalized || opt.text.trim().toLowerCase() === normalized
-      );
-      if (match) {
-        departmentField.value = match.value;
-        return;
-      }
-      // Fallback: add missing option
-      const opt = new Option(department, department, true, true);
-      departmentField.add(opt);
+      const dept = selected ? (selected.dataset.department || "") : "";
+
+      departmentField.value = dept || "";
+      departmentField.readOnly = true;
     }
 
-    function toggleDepartmentField() {
-      if (!departmentField || !targetTypeField) {
-        return;
-      }
-      const checked = document.querySelector('input[name="target_type"]:checked');
-      const target = checked ? checked.value : "";
-      if (target === "person") {
-        setDepartmentFromPerson();
-      } else if (target === "office") {
-        departmentField.value = "";
-      }
-      if (departmentField.tagName === "SELECT") {
-        departmentField.disabled = true;
+    function hideAndDisable(el, group) {
+      if (group) group.style.display = "none";
+      if (el) {
+        el.disabled = true;
+        el.value = "";
       }
     }
 
-    officeField.addEventListener("change", renderAll);
-    renderAll();
+    function showAndEnable(el, group) {
+      if (group) group.style.display = "";
+      if (el) el.disabled = false;
+    }
+
+    function toggleByTargetType() {
+  const t = getTargetType();
+
+  if (!officeField) return;
+
+  if (t === "person") {
+    // person loan → everything visible
+    showAndEnable(personField, personGroup);
+    showAndEnable(deskField, deskGroup);
+    showAndEnable(departmentField, departmentGroup);
+
+    setDepartmentFromPerson();
+  }
+
+  if (t === "office") {
+    // office loan → ONLY office
+    hideAndDisable(personField, personGroup);
+    hideAndDisable(deskField, deskGroup);
+    hideAndDisable(departmentField, departmentGroup);
+  }
+}
+
+
+    // events
+    if (officeField) {
+      officeField.addEventListener("change", renderAll);
+    }
     if (personField) {
       personField.addEventListener("change", () => {
         setDepartmentFromPerson();
-        toggleDepartmentField();
       });
     }
     document.querySelectorAll('input[name="target_type"]').forEach((el) => {
-      el.addEventListener("change", toggleDepartmentField);
+      el.addEventListener("change", toggleByTargetType);
     });
-    toggleDepartmentField();
+
+    // init
+    renderAll();
+    toggleByTargetType();
   })();
 </script>
+
 {% endblock %}
