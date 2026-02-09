@@ -2,6 +2,7 @@ import calendar
 from datetime import date
 
 from django import forms
+from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -154,10 +155,11 @@ def _configure_asset_field(form: forms.Form) -> None:
         .distinct()
         .order_by("name")
     )
-    form.fields["asset"] = forms.ChoiceField(
-        choices=[("", "---------")] + [(n, n) for n in names],
-        required=True,
-    )
+    if names:
+        choices = [("", "---------")] + [(n, n) for n in names]
+    else:
+        choices = [("", "brak")]
+    form.fields["asset"] = forms.ChoiceField(choices=choices, required=True)
     _bootstrapify(form)
 
 
@@ -197,6 +199,25 @@ def _validate_loan_dates(cleaned: dict) -> None:
 
     if loan_date and due_date and due_date < loan_date:
         raise ValidationError({"due_date": "Due date cannot be earlier than loan date."})
+
+
+def _ensure_desk_not_taken_by_other_person(
+    *,
+    desk: Desk | None,
+    loan_date: date | None,
+    due_date: date | None,
+    person: Person | None,
+    exclude_loan_id: int | None = None,
+) -> None:
+    if not desk or not loan_date or not person:
+        return
+    end_date = due_date or loan_date
+    qs = Loan.objects.filter(desk=desk, return_date__isnull=True, loan_date__lte=end_date)
+    qs = qs.filter(models.Q(due_date__isnull=True) | models.Q(due_date__gte=loan_date))
+    if exclude_loan_id:
+        qs = qs.exclude(pk=exclude_loan_id)
+    if qs.exclude(person=person).exists():
+        raise ValidationError({"desk": "Wybrane biurko jest już przypisane innej osobie w tym okresie."})
 
 
 def _assign_legacy_department_label(loan: Loan) -> None:
@@ -304,6 +325,14 @@ class AdminLoanForm(forms.ModelForm):
 
             if desk.room.office_id != office.id:
                 raise ValidationError({"desk": "Selected desk is not in the chosen office."})
+
+            _ensure_desk_not_taken_by_other_person(
+                desk=desk,
+                loan_date=cleaned.get("loan_date"),
+                due_date=cleaned.get("due_date"),
+                person=person,
+                exclude_loan_id=getattr(self.instance, "pk", None),
+            )
 
             # department snapshot from person profile
             cleaned["department"] = (person.department or "").strip() or None
@@ -472,6 +501,14 @@ class EmployeeLoanForm(forms.ModelForm):
             )
 
         self._resolved_person = person
+
+        _ensure_desk_not_taken_by_other_person(
+            desk=desk,
+            loan_date=cleaned.get("loan_date"),
+            due_date=cleaned.get("due_date"),
+            person=person,
+            exclude_loan_id=getattr(self.instance, "pk", None),
+        )
 
         _validate_loan_dates(cleaned)
         return cleaned
