@@ -20,7 +20,7 @@ DEFAULT_DEPARTMENTS = [
 class AssetForm(forms.ModelForm):
     class Meta:
         model = Asset
-        fields = ["category", "name", "serial_number", "asset_tag", "status", "purchase_date", "notes"]
+        fields = ["category", "name", "serial_number", "status", "purchase_date", "notes"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
