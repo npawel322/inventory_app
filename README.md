@@ -94,21 +94,8 @@ Endpoint główny:
 ## 🗂 Project Structure
 
 inventory/
-│
-├── models.py # warstwa domenowa (Office, Asset, Loan itd.)
-├── views.py # widoki HTML
-├── forms.py # logika formularzy i walidacja biznesowa
-├── serializers.py # warstwa API
-├── api_views.py # ViewSety DRF
-├── filters.py # django-filter
-├── roles.py # system ról i kontrola dostępu
-├── admin.py # konfiguracja panelu admina
-├── urls.py
-│
-├── templates/
-│ └── inventory/ # szablony HTML (Bootstrap + JS)
-│
-└── db.sqlite3 # baza danych (dev)
+<img width="455" height="421" alt="image" src="https://github.com/user-attachments/assets/a0c8f000-b34f-4127-90f1-f167d47d5b56" />
+
 
 ## 🧠 Architektura
 
