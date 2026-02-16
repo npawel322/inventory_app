@@ -94,6 +94,7 @@ Endpoint główny:
 ## 🗂 Project Structure
 
 inventory/
+
 <img width="455" height="421" alt="image" src="https://github.com/user-attachments/assets/a0c8f000-b34f-4127-90f1-f167d47d5b56" />
 
 
