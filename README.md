@@ -109,6 +109,7 @@ inventory/
 │ └── inventory/ # szablony HTML (Bootstrap + JS)
 │
 └── db.sqlite3 # baza danych (dev)
+
 ## 🧠 Architektura
 
 Projekt oparty o architekturę MVT Django.
